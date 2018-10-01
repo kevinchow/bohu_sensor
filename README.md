@@ -1,3 +1,16 @@
+# Install on Raspberry Pi
+  - Download image for your pi [Pi 3 or B+ recommanded]
+   [Image list](https://www.home-assistant.io/hassio/installation/)
+  - Download and install Etcher
+   [Etcher offical link](https://etcher.io/) 
+  - Burn image to the SD card
+  - After Pi's status light is green and LAN port light is on go to http://hassio.local:8123
+  - Go to Add-on store http://hassio.local:8123/hassio/store
+  - Install [ssh server](https://www.home-assistant.io/addons/ssh/) > add ssh key
+       ```
+       ssh root@hassio.local
+       ```
+
 # 在Linux服务器上安装
   - 打开8123的防火墙点
   - 按照安装说明操作
