@@ -6,11 +6,36 @@
   - Burn image to the SD card
   - After Pi's status light is green and LAN port light is on go to http://hassio.local:8123
   - Go to Add-on store http://hassio.local:8123/hassio/store
-  - Install [ssh server](https://www.home-assistant.io/addons/ssh/) > add ssh key
-       ```
-       ssh root@hassio.local
-       ```
 
+### UI configuration
+  - Install [Configurator](https://www.home-assistant.io/getting-started/configuration/) 
+  - Follow instruction and change password > click save
+  - Click "start" > "Open web ui" > type in your username and password > Click top left folder icon
+  - Select "configuration.yaml"
+  - Add following to file
+    ```
+    // Add configurator to homepage slidbar
+    panel_iframe:
+    configurator:
+      title: Configurator
+      icon: mdi:wrench
+      url: http://hassio.local:3218
+    ```
+  - Click top right icon > restart HASS
+  - Go to homepage > configurator > click folder icon > click "New Folder"
+  - Enter "custom_components"
+  - go into "custom_components" > click folder icon > click "New Folder"
+  - Enter "sensor"
+  
+### Command line configuration
+  - Install [ssh server](https://www.home-assistant.io/addons/ssh/) > add ssh key
+    ```
+    ssh root@hassio.local
+    ```
+  - Change configuration
+    ```
+    vim /config/configuration.yaml
+    ```
 # 在Linux服务器上安装
   - 打开8123的防火墙点
   - 按照安装说明操作
