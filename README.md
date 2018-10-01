@@ -33,7 +33,7 @@
   - Create account in [darksky](https://darksky.net) for api key
   - Add API key to secrets.yaml
   - 添加传感器
-   ```
+    ```
        // [CONF_PATH]/configuration.yaml
       sensor:
         - platform: darksky
@@ -105,7 +105,8 @@
                value_template: '{{ states.sensor.Temperature.attributes.ILL}}'
                unit_of_measurement: "lux" 
     ```
-  
+    - Restart HASS
+    
 ### Command line configuration
   - Install [ssh server](https://www.home-assistant.io/addons/ssh/) > add ssh key
     ```
