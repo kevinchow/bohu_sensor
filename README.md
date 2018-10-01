@@ -26,6 +26,9 @@
   - Enter "custom_components"
   - go into "custom_components" > click folder icon > click "New Folder"
   - Enter "sensor"
+  - Go into "sensor" > click folder icon > click "New File"
+  - Enter "bohu.py"
+  - Copy the content from bohu.py in to the editor > save
   
 ### Command line configuration
   - Install [ssh server](https://www.home-assistant.io/addons/ssh/) > add ssh key
