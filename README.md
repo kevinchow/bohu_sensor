@@ -1,10 +1,10 @@
 # Instasll
   - 添加传感器解析器
     ```
-       // [CONF_PATH]/custom_components/sensor/bohu.py
+       // [CONF_PATH]/custom_components/bohu/sensor.py
        mkdir custom_components
        mkdir sensor
-       [DOWNLOD bobu.py, __init__.py, manifest.json]
+       [DOWNLOD sensor.py, __init__.py, manifest.json]
     ```
   - 添加传感器
     ```
