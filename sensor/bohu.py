@@ -1,177 +1,120 @@
-"""
-Support for TCP socket based sensors.
-
-For more details about this platform, please refer to the documentation at
-https://home-assistant.io/components/sensor.tcp/
-"""
 import logging
 import socket
 import select
 import json
 
 import voluptuous as vol
-
-from homeassistant.components.sensor import PLATFORM_SCHEMA
+from homeassistant.components.sensor import PLATFORM_SCHEMA, SensorEntity
 from homeassistant.const import (
-    CONF_NAME, CONF_HOST, CONF_PORT, CONF_PAYLOAD, CONF_TIMEOUT,
-    CONF_UNIT_OF_MEASUREMENT, CONF_VALUE_TEMPLATE, STATE_UNKNOWN)
-from homeassistant.exceptions import TemplateError
-from homeassistant.helpers.entity import Entity
+    CONF_NAME,
+    CONF_HOST,
+    CONF_PORT,
+    CONF_PAYLOAD,
+    CONF_TIMEOUT,
+    CONF_UNIT_OF_MEASUREMENT,
+)
 import homeassistant.helpers.config_validation as cv
 
 _LOGGER = logging.getLogger(__name__)
 
-CONF_BUFFER_SIZE = 'buffer_size'
-CONF_VALUE_ON = 'value_on'
+CONF_BUFFER_SIZE = "buffer_size"
 
-DEFAULT_BUFFER_SIZE = 1024
-DEFAULT_NAME = 'TCP Sensor'
+DEFAULT_NAME = "TCP Air Sensor"
 DEFAULT_TIMEOUT = 10
+DEFAULT_BUFFER_SIZE = 1024
 
-CONF_JSON_ATTRS = 'json_attributes'
-PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
-    vol.Required(CONF_HOST): cv.string,
-    vol.Required(CONF_PORT): cv.port,
-    vol.Required(CONF_PAYLOAD): cv.string,
-    vol.Optional(CONF_JSON_ATTRS, default=[]): cv.ensure_list_csv,
-    vol.Optional(CONF_BUFFER_SIZE, default=DEFAULT_BUFFER_SIZE):
-        cv.positive_int,
-    vol.Optional(CONF_NAME, default=DEFAULT_NAME): cv.string,
-    vol.Optional(CONF_TIMEOUT, default=DEFAULT_TIMEOUT): cv.positive_int,
-    vol.Optional(CONF_UNIT_OF_MEASUREMENT): cv.string,
-    vol.Optional(CONF_VALUE_ON): cv.string,
-    vol.Optional(CONF_VALUE_TEMPLATE): cv.template,
-})
+PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
+    {
+        vol.Required(CONF_HOST): cv.string,
+        vol.Required(CONF_PORT): cv.port,
+        vol.Required(CONF_PAYLOAD): cv.string,
+        vol.Optional(CONF_NAME, default=DEFAULT_NAME): cv.string,
+        vol.Optional(CONF_TIMEOUT, default=DEFAULT_TIMEOUT): cv.positive_int,
+        vol.Optional(CONF_BUFFER_SIZE, default=DEFAULT_BUFFER_SIZE): cv.positive_int,
+        vol.Optional(CONF_UNIT_OF_MEASUREMENT, default="ppm"): cv.string,
+    }
+)
 
 
 def setup_platform(hass, config, add_entities, discovery_info=None):
-    """Set up the TCP Sensor."""
-    json_attrs = config.get(CONF_JSON_ATTRS)
-    add_entities([TcpSensor(hass, config, json_attrs)])
+    add_entities([TcpAirSensor(config)])
 
 
-class TcpSensor(Entity):
-    """Implementation of a TCP socket based sensor."""
+class TcpAirSensor(SensorEntity):
+    _attr_has_entity_name = True
 
-    required = tuple()
+    def __init__(self, config):
+        self._host = config[CONF_HOST]
+        self._port = config[CONF_PORT]
+        self._payload = config[CONF_PAYLOAD]
+        self._timeout = config[CONF_TIMEOUT]
+        self._buffer_size = config[CONF_BUFFER_SIZE]
 
-    def __init__(self, hass, config, json_attrs):
-        """Set all the config values if they exist and get initial state."""
-        value_template = config.get(CONF_VALUE_TEMPLATE)
+        self._attr_name = config[CONF_NAME]
+        self._attr_unit_of_measurement = config[CONF_UNIT_OF_MEASUREMENT]
 
-        if value_template is not None:
-            value_template.hass = hass
+        self._attr_native_value = None
+        self._attr_extra_state_attributes = {}
 
-        self._json_attrs = json_attrs
-        self._hass = hass
-        self._value_template = value_template
-        self._config = {
-            CONF_NAME: config.get(CONF_NAME),
-            CONF_HOST: config.get(CONF_HOST),
-            CONF_PORT: config.get(CONF_PORT),
-            CONF_JSON_ATTRS: config.get(CONF_JSON_ATTRS),
-            CONF_TIMEOUT: config.get(CONF_TIMEOUT),
-            CONF_PAYLOAD: config.get(CONF_PAYLOAD),
-            CONF_UNIT_OF_MEASUREMENT: config.get(CONF_UNIT_OF_MEASUREMENT),
-            CONF_VALUE_TEMPLATE: value_template,
-            CONF_VALUE_ON: config.get(CONF_VALUE_ON),
-            CONF_BUFFER_SIZE: config.get(CONF_BUFFER_SIZE),
-        }
-        self._state = None
-        self.update()
+    # ---------- SAFE CONVERTERS ----------
 
-    @property
-    def name(self):
-        """Return the name of this sensor."""
-        name = self._config[CONF_NAME]
-        if name is not None:
-            return name
-        return super(TcpSensor, self).name
+    def _to_int(self, value):
+        try:
+            v = int(float(value))
+            if v < 0:
+                return None
+            return v
+        except Exception:
+            return None
 
-    @property
-    def state(self):
-        """Return the state of the device."""
-        return self._state
+    def _to_float(self, value):
+        try:
+            v = float(value)
+            if v < 0:
+                return None
+            return v
+        except Exception:
+            return None
 
-    @property
-    def unit_of_measurement(self):
-        """Return the unit of measurement of this entity."""
-        return self._config[CONF_UNIT_OF_MEASUREMENT]
-
-    @property
-    def state_attributes(self):
-        """Return the attributes of the entity.
-
-           Provide the parsed JSON data (if any).
-        """
-
-        return self._attributes
+    # ---------- UPDATE ----------
 
     def update(self):
-        """Get the latest value for this sensor."""
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-            sock.settimeout(self._config[CONF_TIMEOUT])
-            try:
-                sock.connect(
-                    (self._config[CONF_HOST], self._config[CONF_PORT]))
-            except socket.error as err:
-                _LOGGER.error(
-                    "Unable to connect to %s on port %s: %s",
-                    self._config[CONF_HOST], self._config[CONF_PORT], err)
-                return
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                sock.settimeout(self._timeout)
+                sock.connect((self._host, self._port))
+                sock.sendall(self._payload.encode())
 
-            try:
-                sock.send(self._config[CONF_PAYLOAD].encode())
-            except socket.error as err:
-                _LOGGER.error(
-                    "Unable to send payload %r to %s on port %s: %s",
-                    self._config[CONF_PAYLOAD], self._config[CONF_HOST],
-                    self._config[CONF_PORT], err)
-                return
+                readable, _, _ = select.select([sock], [], [], self._timeout)
+                if not readable:
+                    _LOGGER.warning("TCP timeout waiting for response")
+                    return
 
-            readable, _, _ = select.select(
-                [sock], [], [], self._config[CONF_TIMEOUT])
-            if not readable:
-                _LOGGER.warning(
-                    "Timeout (%s second(s)) waiting for a response after "
-                    "sending %r to %s on port %s.",
-                    self._config[CONF_TIMEOUT], self._config[CONF_PAYLOAD],
-                    self._config[CONF_HOST], self._config[CONF_PORT])
-                return
+                raw = sock.recv(self._buffer_size).decode()
+                raw = raw.replace(",}", "}")
 
-            value = sock.recv(self._config[CONF_BUFFER_SIZE]).decode()
-            value =  value.replace(",}", "}")
-#            value = '{"PM25":"0","PM1":"0","PM10":"0","CO2":"0","HCHO":"0","TEMR":"25","HIM":"82","AQI":"0","VOC":"0.08"}'
+                data = json.loads(raw)
 
-#        if self._config[CONF_VALUE_TEMPLATE] is not None:
-#            try:
-#                self._state = self._config[CONF_VALUE_TEMPLATE].render(
-#                    value=value)
-#                return
-#            except TemplateError as err:
-#                _LOGGER.error(
-#                    "Unable to render template of %r with value: %r",
-#                    self._config[CONF_VALUE_TEMPLATE], value)
-#                return
-        if self._json_attrs:
-            self._attributes = {}
-            if value:
-                try:
-                    json_dict = json.loads(value)
-                    if isinstance(json_dict, dict):
-                        attrs = {k: json_dict[k] for k in self._json_attrs
-                                 if k in json_dict}
-                        self._attributes = attrs
-                    else:
-                        _LOGGER.warning("JSON result was not a dictionary")
-                except ValueError:
-                    _LOGGER.warning("REST result could not be parsed as JSON")
-                    _LOGGER.debug("Erroneous JSON: %s", value)
-            else:
-                _LOGGER.warning("Empty reply found when expecting JSON data")
-        if value is None:
-            value = STATE_UNKNOWN
-        elif self._value_template is not None:
-            value = self._value_template.render_with_possible_json_value(
-                value, STATE_UNKNOWN)
-        self._state = value
+        except Exception as err:
+            _LOGGER.error("TCP sensor error: %s", err)
+            return
+
+        # ---------- MAIN STATE (CO2 INT) ----------
+        self._attr_native_value = self._to_int(data.get("CO2"))
+
+        # ---------- ATTRIBUTES ----------
+        self._attr_extra_state_attributes = {
+            # PM → INT
+            "pm1": self._to_int(data.get("PM1")),
+            "pm25": self._to_int(data.get("PM25")),
+            "pm10": self._to_int(data.get("PM10")),
+
+            # AQI / HUM → INT
+            "aqi": self._to_int(data.get("AQI")),
+            "humidity": self._to_int(data.get("HUM")),
+
+            # FLOAT VALUES
+            "temperature": self._to_float(data.get("TEMP")),
+            "voc": self._to_float(data.get("VOC")),
+            "hcho": self._to_float(data.get("HCHO")),
+        }
