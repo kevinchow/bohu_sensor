@@ -1,0 +1,10 @@
+{
+  "domain": "bohu",
+  "name": "Bohu Air monitor",
+  "codeowners": [],
+  "dependencies": [],
+  "documentation": "https://github.com/kevinchow/bohu_sensor",
+  "iot_class": "local_polling",
+  "requirements": [],
+  "version": "0.2.0"
+}
