@@ -14,9 +14,7 @@
     sensor:
       - platform: bohu
         name: Living Room CO2
-        host: 47.92.89.72
-        port: 9001
-        payload: '{"method":"readdata","did":"CHANG_TO_YOUR_ID"}'
+        device_id: "CHANG_TO_YOUR_ID"
         scan_interval: 300
         unit_of_measurement: ppm
     
