@@ -65,7 +65,7 @@
             state_class: measurement
     
           - name: "Living Room VOC"
-            state: "{{ state_attr('sensor.living_room_co2', 'voc') }}"
+            state: "{{ state_attr('sensor.living_room_co2', 'tvoc') }}"
             unit_of_measurement: "mg/m³"
             state_class: measurement
     
