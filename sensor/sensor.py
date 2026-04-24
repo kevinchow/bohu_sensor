@@ -1,15 +1,10 @@
 import logging
-import socket
-import select
-import json
-
+import requests
 import voluptuous as vol
+
 from homeassistant.components.sensor import PLATFORM_SCHEMA, SensorEntity
 from homeassistant.const import (
     CONF_NAME,
-    CONF_HOST,
-    CONF_PORT,
-    CONF_PAYLOAD,
     CONF_TIMEOUT,
     CONF_UNIT_OF_MEASUREMENT,
 )
@@ -17,104 +12,82 @@ import homeassistant.helpers.config_validation as cv
 
 _LOGGER = logging.getLogger(__name__)
 
-CONF_BUFFER_SIZE = "buffer_size"
-
-DEFAULT_NAME = "TCP Air Sensor"
+# New configuration keys for the API
+CONF_DEVICE_ID = "device_id"
+DEFAULT_NAME = "Bohu Air Sensor"
 DEFAULT_TIMEOUT = 10
-DEFAULT_BUFFER_SIZE = 1024
 
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
     {
-        vol.Required(CONF_HOST): cv.string,
-        vol.Required(CONF_PORT): cv.port,
-        vol.Required(CONF_PAYLOAD): cv.string,
+        vol.Required(CONF_DEVICE_ID): cv.string,
         vol.Optional(CONF_NAME, default=DEFAULT_NAME): cv.string,
         vol.Optional(CONF_TIMEOUT, default=DEFAULT_TIMEOUT): cv.positive_int,
-        vol.Optional(CONF_BUFFER_SIZE, default=DEFAULT_BUFFER_SIZE): cv.positive_int,
         vol.Optional(CONF_UNIT_OF_MEASUREMENT, default="ppm"): cv.string,
     }
 )
 
-
 def setup_platform(hass, config, add_entities, discovery_info=None):
-    add_entities([TcpAirSensor(config)])
+    add_entities([BohuAirSensor(config)])
 
-
-class TcpAirSensor(SensorEntity):
+class BohuAirSensor(SensorEntity):
     _attr_has_entity_name = True
 
     def __init__(self, config):
-        self._host = config[CONF_HOST]
-        self._port = config[CONF_PORT]
-        self._payload = config[CONF_PAYLOAD]
+        self._device_id = config[CONF_DEVICE_ID]
         self._timeout = config[CONF_TIMEOUT]
-        self._buffer_size = config[CONF_BUFFER_SIZE]
+        self._url = f"https://www.bohu-tech.com/iot/api/open/latest?device_id={self._device_id}"
 
         self._attr_name = config[CONF_NAME]
         self._attr_unit_of_measurement = config[CONF_UNIT_OF_MEASUREMENT]
-
         self._attr_native_value = None
         self._attr_extra_state_attributes = {}
 
     # ---------- SAFE CONVERTERS ----------
 
     def _to_int(self, value):
+        if value is None: return None
         try:
-            v = int(float(value))
-            if v < 0:
-                return None
-            return v
-        except Exception:
+            return int(float(value))
+        except (ValueError, TypeError):
             return None
 
     def _to_float(self, value):
+        if value is None: return None
         try:
-            v = float(value)
-            if v < 0:
-                return None
-            return v
-        except Exception:
+            return float(value)
+        except (ValueError, TypeError):
             return None
 
     # ---------- UPDATE ----------
 
     def update(self):
         try:
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-                sock.settimeout(self._timeout)
-                sock.connect((self._host, self._port))
-                sock.sendall(self._payload.encode())
+            response = requests.get(self._url, timeout=self._timeout)
+            response.raise_for_status()
+            res_json = response.json()
 
-                readable, _, _ = select.select([sock], [], [], self._timeout)
-                if not readable:
-                    _LOGGER.warning("TCP timeout waiting for response")
-                    return
+            if res_json.get("code") != 0:
+                _LOGGER.error("API returned error code: %s", res_json.get("msg"))
+                return
 
-                raw = sock.recv(self._buffer_size).decode()
-                raw = raw.replace(",}", "}")
-
-                data = json.loads(raw)
-
+            data = res_json.get("data", {}).get("sensors", {})
+            
         except Exception as err:
-            _LOGGER.error("TCP sensor error: %s", err)
+            _LOGGER.error("Error fetching data from Bohu API: %s", err)
             return
 
-        # ---------- MAIN STATE (CO2 INT) ----------
-        self._attr_native_value = self._to_int(data.get("CO2"))
+        # ---------- MAIN STATE (CO2) ----------
+        # Mapping 'co2' from the new API
+        self._attr_native_value = self._to_int(data.get("co2"))
 
         # ---------- ATTRIBUTES ----------
         self._attr_extra_state_attributes = {
-            # PM → INT
-            "pm1": self._to_int(data.get("PM1")),
-            "pm25": self._to_int(data.get("PM25")),
-            "pm10": self._to_int(data.get("PM10")),
-
-            # AQI / HUM → INT
-            "aqi": self._to_int(data.get("AQI")),
-            "humidity": self._to_int(data.get("HUM")),
-
-            # FLOAT VALUES
-            "temperature": self._to_float(data.get("TEMP")),
-            "voc": self._to_float(data.get("VOC")),
-            "hcho": self._to_float(data.get("HCHO")),
+            "pm1": self._to_int(data.get("pm1")),
+            "pm25": self._to_int(data.get("pm25")),
+            "pm10": self._to_int(data.get("pm10")),
+            "humidity": self._to_int(data.get("hum")),
+            "temperature": self._to_float(data.get("temp")),
+            "tvoc": self._to_float(data.get("tvoc")),
+            "hcho": self._to_float(data.get("hcho")),
+            "last_check_utc": res_json.get("data", {}).get("timestamp")
         }
